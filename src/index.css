@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+@theme {
+    --color-claude-light: #f7f7f8;
+    --color-claude-dark: #ebebf0;
+    --color-claude-text: #343541;
+    --color-claude-border: #e5e5e5;
+    --color-claude-accent: #5436da;
+}
+
+body {
+    @apply bg-claude-light text-claude-text;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom ScrollBar */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    @apply bg-gray-300 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-400;
+}
+
+/* Markdown Styles */
+.markdown-content h1 {
+    @apply text-2xl font-bold mt-4 mb-2;
+}
+
+.markdown-content h2 {
+    @apply text-xl font-bold mt-4 mb-2;
+}
+
+.markdown-content h3 {
+    @apply text-lg font-bold mt-3 mb-1;
+}
+
+.markdown-content p {
+    @apply my-2;
+}
+
+.markdown-content ul, .markdown-content ol {
+    @apply pl-6 my-2;
+}
+
+.markdown-content ul {
+    @apply list-disc;
+}
+
+.markdown-content ol {
+    @apply list-decimal;
+}
+
+.markdown-content pre {
+    @apply bg-gray-100 p-3 rounded my-2 overflow-x-auto;
+}
+
+.markdown-content code {
+    @apply font-mono text-sm;
+}
+
+.markdown-content a {
+    @apply text-blue-600 hover:underline;
+}
+
+.markdown-content hr {
+    @apply my-4 border-t border-gray-300;
+}
+
+.markdown-content blockquote {
+    @apply pl-4 border-l-4 border-gray-300 text-gray-700 italic my-2;
+}
+
+.extend_questions p {
+    @apply cursor-pointer text-claude-accent hover:underline
+    bg-claude-dark px-3 py-2 rounded-md mb-2 inline-block mr-2;
+}
