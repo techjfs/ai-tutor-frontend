@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect } from 'react';
+import React, { createContext, useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 
 export const ChatContext = createContext();
@@ -19,13 +19,12 @@ export const ChatProvider = ({ children }) => {
     // 选中的对话IDs（用于批量删除）
     const [selectedIds, setSelectedIds] = useState([]);
 
+    // 使用useRef来跟踪当前消息状态，而不是外部变量
+    const currentMessagesRef = useRef([]);
 
-    // 用一个外部变量来追踪当前的消息状态
-    let currentMessages = [];
-
-    // 组件初始化时，同步外部变量
+    // 当messages变化时更新ref
     useEffect(() => {
-        currentMessages = messages;
+        currentMessagesRef.current = messages;
     }, [messages]);
 
     // 从localStorage加载对话列表
@@ -48,6 +47,8 @@ export const ChatProvider = ({ children }) => {
     useEffect(() => {
         if (conversations.length > 0) {
             localStorage.setItem('aiTutorConversations', JSON.stringify(conversations));
+        } else {
+            localStorage.removeItem("aiTutorConversations");
         }
     }, [conversations]);
 
@@ -75,7 +76,7 @@ export const ChatProvider = ({ children }) => {
 
             websocket.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                console.log('收到消息:', data);
+                // console.log('收到消息:', data);
 
                 if (data.type === 'llm_response') {
                     handleLLMResponse(data);
@@ -122,19 +123,16 @@ export const ChatProvider = ({ children }) => {
             setIsGenerating(true);
         }
         else if (event === 'message') {
-            // 在更新状态之前，先更新我们的外部变量
+            // 使用ref获取最新的消息状态
+            const currentMessages = currentMessagesRef.current;
             const newMessages = [...currentMessages];
-            console.log("Current messages before update:", newMessages.length, newMessages);
 
             // 检查是否已有AI回复消息，如果有则追加，否则创建新消息
             const lastMessage = newMessages.length > 0 ? newMessages[newMessages.length - 1] : null;
-            console.log("Last message:", lastMessage);
 
             if (lastMessage && lastMessage.role === 'assistant' && lastMessage.status === 'generating') {
-                console.log("Appending to existing message");
                 lastMessage.content += responseData;
             } else {
-                console.log("Creating new message");
                 newMessages.push({
                     id: uuidv4(),
                     role: 'assistant',
@@ -144,15 +142,11 @@ export const ChatProvider = ({ children }) => {
                 });
             }
 
-            // 更新外部变量和React状态
-            currentMessages = newMessages;
-            console.log("Updated messages:", currentMessages.length, currentMessages);
-
             // 更新React状态
-            setMessages(currentMessages);
+            setMessages(newMessages);
 
             // 同时更新conversations中的对应对话
-            updateActiveConversation();
+            updateActiveConversation(newMessages);
         }
         else if (event === 'end' || event === 'interrupted' || event === 'error') {
             // 完成生成，更新最后一条消息的状态
@@ -162,13 +156,12 @@ export const ChatProvider = ({ children }) => {
                 if (lastMessage && lastMessage.status === 'generating') {
                     lastMessage.status = 'complete';
                 }
-                // 更新外部变量
-                currentMessages = newMessages;
+
+                // 更新conversations中的对应对话
+                updateActiveConversation(newMessages);
+
                 return newMessages;
             });
-
-            // 更新conversations中的对应对话
-            updateActiveConversation();
 
             // 重置生成状态
             setIsGenerating(false);
@@ -177,12 +170,15 @@ export const ChatProvider = ({ children }) => {
     };
 
     // 更新当前活动对话
-    const updateActiveConversation = () => {
+    const updateActiveConversation = (updatedMessages = null) => {
         if (activeConversationId) {
+            console.log("updateActiveConversation:", activeConversationId);
+            const messagesToUpdate = updatedMessages || currentMessagesRef.current;
+
             setConversations(prevConversations => {
                 return prevConversations.map(conv => {
                     if (conv.id === activeConversationId) {
-                        return { ...conv, messages, lastUpdated: new Date().toISOString() };
+                        return { ...conv, messages: messagesToUpdate, lastUpdated: new Date().toISOString() };
                     }
                     return conv;
                 });
@@ -200,8 +196,7 @@ export const ChatProvider = ({ children }) => {
             created: new Date().toISOString(),
             lastUpdated: new Date().toISOString()
         };
-
-        setConversations([newConversation, ...conversations]);
+        setConversations(prevConversations => [newConversation, ...prevConversations]);
         setActiveConversationId(newId);
         setMessages([]);
         setSelectedIds([]);
@@ -212,7 +207,7 @@ export const ChatProvider = ({ children }) => {
         if (!question.trim() || !ws || ws.readyState !== WebSocket.OPEN) return;
 
         // 判断是新对话还是追问
-        const isNewConversation = messages.length === 0;
+        const isNewConversation = currentMessagesRef.current.length === 0;
 
         // 创建用户消息
         const userMessage = {
@@ -228,7 +223,7 @@ export const ChatProvider = ({ children }) => {
         }
 
         // 更新消息列表
-        const updatedMessages = [...messages, userMessage];
+        const updatedMessages = [...currentMessagesRef.current, userMessage];
         setMessages(updatedMessages);
 
         // 更新对话标题（如果是新对话）
@@ -248,7 +243,7 @@ export const ChatProvider = ({ children }) => {
             });
         } else {
             // 追问情况，只更新消息
-            updateActiveConversation();
+            updateActiveConversation(updatedMessages);
         }
 
         // 发送问题到WebSocket

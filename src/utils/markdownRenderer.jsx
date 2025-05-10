@@ -3,13 +3,37 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import ThinkBlock from "../components/ThinkBlock";
+import rehypeRaw from 'rehype-raw'; // 确保安装了这个包
 
 // 自定义组件，用于渲染Markdown内容
 export const renderMarkdown = (content) => {
+    // 将<think>标签替换为可处理的HTML标签
+    const processedContent = content.replace(
+        /<think>/g, '<div class="think-block-marker">'
+    ).replace(
+        /<\/think>/g, '</div>'
+    );
+
     return (
         <ReactMarkdown
             remarkPlugins={[remarkGfm]}
+            rehypePlugins={[rehypeRaw]} // 添加rehypeRaw以处理HTML标签
             components={{
+                div: ({ node, className, children, ...props }) => {
+                    // 处理think块
+                    if (className === 'think-block-marker') {
+                        return <ThinkBlock>{children}</ThinkBlock>;
+                    }
+
+                    // 处理推荐问题的特殊样式
+                    if (className === 'extend_questions') {
+                        return <div {...props} className="extend_questions flex flex-wrap gap-2 mt-3">{children}</div>;
+                    }
+
+                    // 其他div正常处理
+                    return <div className={className} {...props}>{children}</div>;
+                },
                 h1: (props) => <h1 {...props} className="text-2xl font-bold mt-4 mb-2" />,
                 h2: (props) => <h2 {...props} className="text-xl font-bold mt-4 mb-2" />,
                 h3: (props) => <h3 {...props} className="text-lg font-bold mt-3 mb-1" />,
@@ -24,7 +48,7 @@ export const renderMarkdown = (content) => {
                     <blockquote {...props} className="pl-4 border-l-4 border-gray-300 text-gray-700 italic my-2" />
                 ),
                 hr: (props) => <hr {...props} className="my-4 border-t border-gray-300" />,
-                code: ({ inline, className, children, ...props }) => {
+                code: ({ node, inline, className, children, ...props }) => {
                     const match = /language-(\w+)/.exec(className || '');
                     return !inline && match ? (
                         <SyntaxHighlighter
@@ -44,17 +68,10 @@ export const renderMarkdown = (content) => {
                             {children}
                         </code>
                     );
-                },
-                div: ({ className, ...props }) => {
-                    // 处理推荐问题的特殊样式
-                    if (className === 'extend_questions') {
-                        return <div {...props} className="extend_questions flex flex-wrap gap-2 mt-3" />;
-                    }
-                    return <div {...props} />;
                 }
             }}
         >
-            {content}
+            {processedContent}
         </ReactMarkdown>
     );
 };
