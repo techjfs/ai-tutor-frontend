@@ -1,6 +1,7 @@
 import React, { useContext } from 'react';
 import { renderMarkdown, extractRecommendedQuestions } from '../utils/markdownRenderer.jsx';
 import { ChatContext } from '../contexts/ChatContext';
+import './ChatMessage.css'; // 引入自定义CSS
 
 const ChatMessage = ({ message }) => {
     const { sendQuestion } = useContext(ChatContext);
@@ -34,12 +35,12 @@ const ChatMessage = ({ message }) => {
                         {role === 'user' ? (
                             <p className="whitespace-pre-wrap">{content}</p>
                         ) : (
-                            <div className="prose max-w-none">
+                            <div className="prose max-w-none markdown-content">
                                 {content && renderMarkdown(content)}
 
                                 {/* 如果正在生成，显示闪烁的光标 */}
                                 {status === 'generating' && (
-                                    <span className="inline-block w-2 h-4 bg-black ml-1 animate-pulse"></span>
+                                    <span className="inline-block w-2 h-4 bg-black ml-1 animate-pulse align-text-bottom"></span>
                                 )}
 
                                 {/* 推荐问题按钮 */}

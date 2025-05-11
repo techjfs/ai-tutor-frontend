@@ -1,0 +1,38 @@
+/* ChatMessage.css */
+.markdown-content {
+    word-wrap: break-word;
+    word-break: break-word;
+    overflow-wrap: break-word;
+}
+
+/* 处理代码块和预格式文本 */
+.markdown-content pre,
+.markdown-content code {
+    white-space: pre-wrap !important;
+    word-break: break-all !important;
+    max-width: 100%;
+}
+
+/* 处理表格 */
+.markdown-content table {
+    table-layout: fixed;
+    width: 100%;
+    max-width: 100%;
+}
+
+.markdown-content table td,
+.markdown-content table th {
+    word-break: break-word;
+    overflow-wrap: break-word;
+}
+
+/* 处理图片 */
+.markdown-content img {
+    max-width: 100%;
+    height: auto;
+}
+
+/* 处理长链接 */
+.markdown-content a {
+    word-break: break-all;
+}
