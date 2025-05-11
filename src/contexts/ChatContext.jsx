@@ -21,11 +21,18 @@ export const ChatProvider = ({ children }) => {
 
     // 使用useRef来跟踪当前消息状态，而不是外部变量
     const currentMessagesRef = useRef([]);
+    // 添加一个ref来跟踪activeConversationId
+    const activeConversationIdRef = useRef(null);
 
     // 当messages变化时更新ref
     useEffect(() => {
         currentMessagesRef.current = messages;
     }, [messages]);
+
+    // 当activeConversationId变化时更新ref
+    useEffect(() => {
+        activeConversationIdRef.current = activeConversationId;
+    }, [activeConversationId]);
 
     // 从localStorage加载对话列表
     useEffect(() => {
@@ -57,12 +64,13 @@ export const ChatProvider = ({ children }) => {
         if (activeConversationId) {
             const activeConversation = conversations.find(conv => conv.id === activeConversationId);
             if (activeConversation) {
+                // 直接设置消息，不依赖on conversations变化
                 setMessages(activeConversation.messages || []);
             }
         } else {
             setMessages([]);
         }
-    }, [activeConversationId, conversations]);
+    }, [activeConversationId]);
 
     // 初始化WebSocket连接
     useEffect(() => {
@@ -171,14 +179,22 @@ export const ChatProvider = ({ children }) => {
 
     // 更新当前活动对话
     const updateActiveConversation = (updatedMessages = null) => {
-        if (activeConversationId) {
-            console.log("updateActiveConversation:", activeConversationId);
+        // 使用ref获取最新的activeConversationId
+        const currentActiveId = activeConversationIdRef.current;
+
+        if (currentActiveId) {
             const messagesToUpdate = updatedMessages || currentMessagesRef.current;
 
             setConversations(prevConversations => {
+                // 创建一个新的conversations数组，确保引用变化触发组件更新
                 return prevConversations.map(conv => {
-                    if (conv.id === activeConversationId) {
-                        return { ...conv, messages: messagesToUpdate, lastUpdated: new Date().toISOString() };
+                    if (conv.id === currentActiveId) {
+                        // 创建新对象，不修改原对象
+                        return {
+                            ...conv,
+                            messages: [...messagesToUpdate], // 创建消息数组的副本
+                            lastUpdated: new Date().toISOString()
+                        };
                     }
                     return conv;
                 });
@@ -218,7 +234,7 @@ export const ChatProvider = ({ children }) => {
         };
 
         // 如果是新对话且没有活动对话，先创建一个
-        if (isNewConversation && !activeConversationId) {
+        if (isNewConversation && !activeConversationIdRef.current) {
             createNewConversation();
         }
 
@@ -230,11 +246,11 @@ export const ChatProvider = ({ children }) => {
         if (isNewConversation) {
             setConversations(prevConversations => {
                 return prevConversations.map(conv => {
-                    if (conv.id === activeConversationId) {
+                    if (conv.id === activeConversationIdRef.current) {
                         return {
                             ...conv,
                             title: question.length > 30 ? question.substring(0, 30) + '...' : question,
-                            messages: updatedMessages,
+                            messages: [...updatedMessages], // 创建消息数组的副本
                             lastUpdated: new Date().toISOString()
                         };
                     }
@@ -296,7 +312,20 @@ export const ChatProvider = ({ children }) => {
 
     // 选择对话
     const selectConversation = (id) => {
+        // 先保存当前对话的消息（如果有）
+        if (activeConversationId) {
+            updateActiveConversation();
+        }
+
+        // 然后设置新的活动对话
         setActiveConversationId(id);
+
+        // 找到新选中的对话
+        const selectedConversation = conversations.find(conv => conv.id === id);
+        if (selectedConversation) {
+            // 直接设置消息，而不是依赖于useEffect
+            setMessages(selectedConversation.messages || []);
+        }
     };
 
     return (
