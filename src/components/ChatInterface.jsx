@@ -16,13 +16,13 @@ const ChatInterface = () => {
     const messagesEndRef = useRef(null);
     const messageContainerRef = useRef(null);
     const textareaRef = useRef(null);
+    const isScrollLocked = useRef(false);
 
-    // 跟踪上一次消息长度，用于检测新消息
+    // Refs for checking message changes
     const prevMessagesLengthRef = useRef(messages.length);
-    // 跟踪最后一条消息的内容，用于检测内容更新
     const lastMessageContentRef = useRef(messages[messages.length - 1]?.content || '');
 
-    // 自动调整文本框高度
+    // Auto adjust textarea height
     const adjustTextareaHeight = () => {
         const textarea = textareaRef.current;
         if (textarea) {
@@ -31,59 +31,62 @@ const ChatInterface = () => {
         }
     };
 
-    // 改进的滚动到底部函数
-    const scrollToBottomLocal = () => {
+    // Improved scroll function with debounce logic
+    const scrollToBottom = () => {
+        // If scroll is locked, don't attempt to scroll
+        if (isScrollLocked.current) return;
+
+        // Lock scrolling temporarily to prevent bouncing
+        isScrollLocked.current = true;
+
         if (messagesEndRef.current) {
             messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
         } else if (messageContainerRef.current) {
             messageContainerRef.current.scrollTop = messageContainerRef.current.scrollHeight;
         }
+
+        // Unlock scrolling after a delay
+        setTimeout(() => {
+            isScrollLocked.current = false;
+        }, 300);
     };
 
-    // 主要的滚动逻辑：监听消息变化和生成状态
+    // Main scroll logic with optimizations
     useEffect(() => {
-        // 检查是否有新消息添加
         const hasNewMessage = messages.length > prevMessagesLengthRef.current;
-
-        // 获取最后一条消息的内容
         const currentLastMessageContent = messages[messages.length - 1]?.content || '';
-        // 检查最后一条消息内容是否有变化
         const hasContentChanged = currentLastMessageContent !== lastMessageContentRef.current;
 
-        // 更新refs以便下次比较
+        // Update refs for next comparison
         prevMessagesLengthRef.current = messages.length;
         lastMessageContentRef.current = currentLastMessageContent;
 
-        // 在以下情况滚动到底部：新消息、内容变化、或正在生成回复
-        if (hasNewMessage || hasContentChanged || isGenerating) {
-            // 使用requestAnimationFrame确保在下一次渲染周期执行滚动
-            requestAnimationFrame(() => {
-                scrollToBottomLocal();
-            });
-
-            // 添加一个短延迟的滚动，捕获可能的延迟渲染内容
-            setTimeout(scrollToBottomLocal, 100);
+        // Scroll only if necessary to reduce jitter
+        if (hasNewMessage) {
+            // For new messages, scroll immediately
+            requestAnimationFrame(scrollToBottom);
+        } else if (hasContentChanged && isGenerating) {
+            // For content updates during generation, use a more controlled approach
+            // Don't scroll immediately for every content change - use a timer
+            const timer = setTimeout(scrollToBottom, 150);
+            return () => clearTimeout(timer);
         }
     }, [messages, isGenerating]);
 
-    // 单独监听isGenerating的变化，特别是从true变为false的情况
+    // Watch for generation stopping
     useEffect(() => {
-        if (!isGenerating) {
-            // 当生成停止时，确保滚动到最新位置
-            setTimeout(scrollToBottomLocal, 150);
+        if (!isGenerating && messages.length > 0) {
+            // When generation stops, do a final scroll
+            const timer = setTimeout(scrollToBottom, 200);
+            return () => clearTimeout(timer);
         }
-    }, [isGenerating]);
+    }, [isGenerating, messages.length]);
 
-    // 输入框值变化时自动调整高度
-    useEffect(() => {
-        adjustTextareaHeight();
-    }, [inputValue]);
-
-    // 窗口大小变化时重新滚动到底部
+    // Resize handling
     useEffect(() => {
         const handleResize = () => {
-            if (messages.length > 0) {
-                scrollToBottomLocal();
+            if (messages.length > 0 && !isScrollLocked.current) {
+                scrollToBottom();
             }
         };
 
@@ -91,26 +94,31 @@ const ChatInterface = () => {
         return () => window.removeEventListener('resize', handleResize);
     }, [messages.length]);
 
-    // 处理文本框输入
+    // Adjust textarea height when input changes
+    useEffect(() => {
+        adjustTextareaHeight();
+    }, [inputValue]);
+
+    // Handle input changes
     const handleInputChange = (e) => {
         setInputValue(e.target.value);
     };
 
-    // 处理发送消息
+    // Handle sending messages
     const handleSendMessage = () => {
         if (inputValue.trim() && !isGenerating) {
             sendQuestion(inputValue);
             setInputValue('');
-            // 重置文本框高度
+            // Reset textarea height
             if (textareaRef.current) {
                 textareaRef.current.style.height = 'auto';
             }
-            // 立即滚动到底部，提高用户体验
-            setTimeout(scrollToBottomLocal, 50);
+            // Scroll to bottom shortly after sending
+            setTimeout(scrollToBottom, 50);
         }
     };
 
-    // 处理按键事件（回车发送，Shift+回车换行）
+    // Handle key events (Enter to send, Shift+Enter for new line)
     const handleKeyDown = (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -118,7 +126,7 @@ const ChatInterface = () => {
         }
     };
 
-    // 空状态显示
+    // Empty state display
     if (!activeConversationId) {
         return (
             <div className="flex-1 flex flex-col items-center justify-center bg-claude-light">
@@ -138,7 +146,7 @@ const ChatInterface = () => {
 
     return (
         <div className="flex-1 flex flex-col h-full bg-claude-light">
-            {/* 消息列表 */}
+            {/* Message list */}
             <div
                 ref={messageContainerRef}
                 className="flex-1 overflow-y-auto"
@@ -161,8 +169,8 @@ const ChatInterface = () => {
                                     className="bg-white hover:bg-gray-50 border border-gray-200 rounded-md p-3 text-left text-sm transition-colors"
                                     onClick={() => {
                                         sendQuestion(question);
-                                        // 问题按钮点击后也滚动到底部
-                                        setTimeout(scrollToBottomLocal, 50);
+                                        // Scroll to bottom after clicking suggestion button
+                                        setTimeout(scrollToBottom, 50);
                                     }}
                                 >
                                     {question}
@@ -180,7 +188,7 @@ const ChatInterface = () => {
                 )}
             </div>
 
-            {/* 输入框 */}
+            {/* Input area */}
             <div className="border-t border-claude-border bg-white px-4 py-3">
                 <div className="max-w-3xl mx-auto">
                     <div className="relative">

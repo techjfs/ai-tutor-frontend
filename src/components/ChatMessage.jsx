@@ -5,7 +5,12 @@ import './ChatMessage.css'; // 引入自定义CSS
 
 const ChatMessage = ({ message }) => {
     const { sendQuestion } = useContext(ChatContext);
-    const { role, content, status } = message;
+    const { role, content, status, isFollowup } = message;
+
+    // 记录消息的isFollowup属性，便于调试
+    if (role === 'assistant') {
+        console.log("ChatMessage显示 - isFollowup:", isFollowup);
+    }
 
     // 提取推荐问题（如果有）
     const recommendedQuestions =
@@ -36,6 +41,15 @@ const ChatMessage = ({ message }) => {
                             <p className="whitespace-pre-wrap">{content}</p>
                         ) : (
                             <div className="prose max-w-none markdown-content">
+                                {/* 如果是追问回复，显示标记 */}
+                                {isFollowup && (
+                                    <div className="mb-3">
+                                        <span className="bg-gradient-to-r from-blue-100 to-purple-100 text-blue-800 text-xs font-medium px-3 py-1 rounded-full border border-blue-200 shadow-sm">
+                                            追问回复 ↩
+                                        </span>
+                                    </div>
+                                )}
+
                                 {content && renderMarkdown(content)}
 
                                 {/* 如果正在生成，显示闪烁的光标 */}

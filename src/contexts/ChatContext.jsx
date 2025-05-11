@@ -18,11 +18,15 @@ export const ChatProvider = ({ children }) => {
     const [ws, setWs] = useState(null);
     // 选中的对话IDs（用于批量删除）
     const [selectedIds, setSelectedIds] = useState([]);
+    // 追问状态
+    const [isFollowup, setIsFollowup] = useState(false);
 
     // 使用useRef来跟踪当前消息状态，而不是外部变量
     const currentMessagesRef = useRef([]);
     // 添加一个ref来跟踪activeConversationId
     const activeConversationIdRef = useRef(null);
+    // 添加一个ref来跟踪isFollowup
+    const isFollowupRef = useRef(false);
 
     // 当messages变化时更新ref
     useEffect(() => {
@@ -33,6 +37,11 @@ export const ChatProvider = ({ children }) => {
     useEffect(() => {
         activeConversationIdRef.current = activeConversationId;
     }, [activeConversationId]);
+
+    // 当isFollowup变化时更新ref
+    useEffect(() => {
+        isFollowupRef.current = isFollowup;
+    }, [isFollowup]);
 
     // 从localStorage加载对话列表
     useEffect(() => {
@@ -89,7 +98,14 @@ export const ChatProvider = ({ children }) => {
                 if (data.type === 'llm_response') {
                     handleLLMResponse(data);
                 } else if (data.type === 'task_started') {
+                    console.log('收到task_started消息:', data);
                     setCurrentTaskId(data.task_id);
+
+                    // 检查是否为追问 - 来自后端的is_followup字段
+                    const followupStatus = !!data.is_followup;
+                    console.log('设置追问状态:', followupStatus);
+                    setIsFollowup(followupStatus);
+                    isFollowupRef.current = followupStatus;
                 } else if (data.type === 'command_sent') {
                     if (data.command === 'stop') {
                         setIsGenerating(false);
@@ -135,19 +151,27 @@ export const ChatProvider = ({ children }) => {
             const currentMessages = currentMessagesRef.current;
             const newMessages = [...currentMessages];
 
+            // 获取当前的追问状态
+            const currentIsFollowup = isFollowupRef.current;
+            // 为调试打印当前追问状态
+            console.log('生成消息中，当前追问状态:', currentIsFollowup);
+
             // 检查是否已有AI回复消息，如果有则追加，否则创建新消息
             const lastMessage = newMessages.length > 0 ? newMessages[newMessages.length - 1] : null;
 
             if (lastMessage && lastMessage.role === 'assistant' && lastMessage.status === 'generating') {
                 lastMessage.content += responseData;
             } else {
+                // 创建新消息时保存当前的追问状态
                 newMessages.push({
                     id: uuidv4(),
                     role: 'assistant',
                     content: responseData,
                     status: 'generating',
-                    timestamp: new Date().toISOString()
+                    timestamp: new Date().toISOString(),
+                    isFollowup: currentIsFollowup // 使用ref中的值确保状态准确
                 });
+                console.log('创建新消息，isFollowup:', currentIsFollowup);
             }
 
             // 更新React状态
@@ -163,6 +187,8 @@ export const ChatProvider = ({ children }) => {
                 const lastMessage = newMessages[newMessages.length - 1];
                 if (lastMessage && lastMessage.status === 'generating') {
                     lastMessage.status = 'complete';
+                    // 保留追问标记 - 不做任何修改
+                    console.log('消息完成，保留isFollowup:', lastMessage.isFollowup);
                 }
 
                 // 更新conversations中的对应对话
@@ -174,6 +200,10 @@ export const ChatProvider = ({ children }) => {
             // 重置生成状态
             setIsGenerating(false);
             setCurrentTaskId(null);
+
+            // 不要在这里重置isFollowup，等到新问题时自然重置
+            // 先记录一下当前的状态再清除
+            console.log('生成结束，isFollowup将在下一次提问时重置，当前值:', isFollowupRef.current);
         }
     };
 
@@ -216,6 +246,9 @@ export const ChatProvider = ({ children }) => {
         setActiveConversationId(newId);
         setMessages([]);
         setSelectedIds([]);
+        // 新对话，重置追问状态
+        setIsFollowup(false);
+        isFollowupRef.current = false;
     };
 
     // 发送问题
@@ -223,7 +256,9 @@ export const ChatProvider = ({ children }) => {
         if (!question.trim() || !ws || ws.readyState !== WebSocket.OPEN) return;
 
         // 判断是新对话还是追问
-        const isNewConversation = currentMessagesRef.current.length === 0;
+        const currentMessages = currentMessagesRef.current;
+        const isNewConversation = currentMessages.length === 0;
+        const activeId = activeConversationIdRef.current;
 
         // 创建用户消息
         const userMessage = {
@@ -234,7 +269,7 @@ export const ChatProvider = ({ children }) => {
         };
 
         // 如果是新对话且没有活动对话，先创建一个
-        if (isNewConversation && !activeConversationIdRef.current) {
+        if (isNewConversation && !activeId) {
             createNewConversation();
         }
 
@@ -262,10 +297,19 @@ export const ChatProvider = ({ children }) => {
             updateActiveConversation(updatedMessages);
         }
 
+        // 新问题时可以清除之前的isFollowup状态
+        // 后端会根据conversation_id判断是否为追问
+        // 我们重置前端状态以便于下一次响应更新正确的标志
+        setIsFollowup(false);
+        isFollowupRef.current = false;
+        console.log('发送新问题，重置追问状态为false');
+
         // 发送问题到WebSocket
+        // 通过传递conversation_id，后端可以判断这是新对话还是追问
         ws.send(JSON.stringify({
             type: 'question',
-            question: question
+            question: question,
+            conversation_id: activeConversationIdRef.current
         }));
     };
 
@@ -326,6 +370,10 @@ export const ChatProvider = ({ children }) => {
             // 直接设置消息，而不是依赖于useEffect
             setMessages(selectedConversation.messages || []);
         }
+
+        // 切换对话时重置追问状态
+        setIsFollowup(false);
+        isFollowupRef.current = false;
     };
 
     return (
@@ -334,6 +382,7 @@ export const ChatProvider = ({ children }) => {
             messages,
             activeConversationId,
             isGenerating,
+            isFollowup,
             currentTaskId,
             selectedIds,
             sendQuestion,
