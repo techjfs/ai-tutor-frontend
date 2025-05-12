@@ -1,4 +1,5 @@
-import React, { useContext } from 'react';
+// 修复 ChatMessage.jsx 中的闪烁问题
+import React, { useContext, useRef, useEffect } from 'react'; // 添加 useRef 和 useEffect
 import { renderMarkdown, extractRecommendedQuestions } from '../utils/markdownRenderer.jsx';
 import { ChatContext } from '../contexts/ChatContext';
 import './ChatMessage.css'; // 引入自定义CSS
@@ -7,10 +8,13 @@ const ChatMessage = ({ message }) => {
     const { sendQuestion } = useContext(ChatContext);
     const { role, content, status, isFollowup } = message;
 
-    // 记录消息的isFollowup属性，便于调试
-    if (role === 'assistant') {
-        console.log("ChatMessage显示 - isFollowup:", isFollowup);
-    }
+    // 使用ref记住初始的isFollowup值，避免重新渲染时状态变化
+    const isFollowupRef = useRef(isFollowup);
+
+    // 仅在组件挂载时设置一次
+    useEffect(() => {
+        isFollowupRef.current = isFollowup;
+    }, []);
 
     // 提取推荐问题（如果有）
     const recommendedQuestions =
@@ -41,8 +45,8 @@ const ChatMessage = ({ message }) => {
                             <p className="whitespace-pre-wrap">{content}</p>
                         ) : (
                             <div className="prose max-w-none markdown-content">
-                                {/* 如果是追问回复，显示标记 */}
-                                {isFollowup && (
+                                {/* 如果是追问回复，显示标记 - 使用ref中的稳定值 */}
+                                {isFollowupRef.current && (
                                     <div className="mb-3">
                                         <span className="bg-gradient-to-r from-blue-100 to-purple-100 text-blue-800 text-xs font-medium px-3 py-1 rounded-full border border-blue-200 shadow-sm">
                                             追问回复 ↩
@@ -52,9 +56,9 @@ const ChatMessage = ({ message }) => {
 
                                 {content && renderMarkdown(content)}
 
-                                {/* 如果正在生成，显示闪烁的光标 */}
+                                {/* 如果正在生成，显示闪烁的光标 - 使用透明度动画代替背景色变化 */}
                                 {status === 'generating' && (
-                                    <span className="inline-block w-2 h-4 bg-black ml-1 animate-pulse align-text-bottom"></span>
+                                    <span className="inline-block w-2 h-4 bg-black ml-1 opacity-animation align-text-bottom"></span>
                                 )}
 
                                 {/* 推荐问题按钮 */}

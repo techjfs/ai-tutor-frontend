@@ -1,4 +1,4 @@
-import React, { useContext, useState, useRef, useEffect } from 'react';
+import React, { useContext, useState, useRef, useEffect, useCallback } from 'react';
 import { ChatContext } from '../contexts/ChatContext';
 import ChatMessage from './ChatMessage';
 
@@ -13,16 +13,40 @@ const ChatInterface = () => {
     } = useContext(ChatContext);
 
     const [inputValue, setInputValue] = useState('');
-    const messagesEndRef = useRef(null);
-    const messageContainerRef = useRef(null);
     const textareaRef = useRef(null);
-    const isScrollLocked = useRef(false);
+    const messagesEndRef = useRef(null);
+    const scrollContainerRef = useRef(null);
+    const [isAtBottom, setIsAtBottom] = useState(true);  // ➡️ 是否在底部
 
-    // Refs for checking message changes
-    const prevMessagesLengthRef = useRef(messages.length);
-    const lastMessageContentRef = useRef(messages[messages.length - 1]?.content || '');
+    // 用户滚动监听，判断是否在底部
+    const handleScroll = useCallback(() => {
+        const container = scrollContainerRef.current;
+        if (container) {
+            const isBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 20;
+            setIsAtBottom(isBottom);
+        }
+    }, []);
 
-    // Auto adjust textarea height
+    // 每次 messages 变化时，如果在底部才自动滚动
+    useEffect(() => {
+        if (isAtBottom && messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [messages, isAtBottom]);
+
+    // 自动挂载 scroll 事件监听
+    useEffect(() => {
+        const container = scrollContainerRef.current;
+        if (container) {
+            container.addEventListener('scroll', handleScroll);
+        }
+        return () => {
+            if (container) {
+                container.removeEventListener('scroll', handleScroll);
+            }
+        };
+    }, [handleScroll]);
+
     const adjustTextareaHeight = () => {
         const textarea = textareaRef.current;
         if (textarea) {
@@ -31,94 +55,24 @@ const ChatInterface = () => {
         }
     };
 
-    // Improved scroll function with debounce logic
-    const scrollToBottom = () => {
-        // If scroll is locked, don't attempt to scroll
-        if (isScrollLocked.current) return;
-
-        // Lock scrolling temporarily to prevent bouncing
-        isScrollLocked.current = true;
-
-        if (messagesEndRef.current) {
-            messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-        } else if (messageContainerRef.current) {
-            messageContainerRef.current.scrollTop = messageContainerRef.current.scrollHeight;
-        }
-
-        // Unlock scrolling after a delay
-        setTimeout(() => {
-            isScrollLocked.current = false;
-        }, 300);
-    };
-
-    // Main scroll logic with optimizations
-    useEffect(() => {
-        const hasNewMessage = messages.length > prevMessagesLengthRef.current;
-        const currentLastMessageContent = messages[messages.length - 1]?.content || '';
-        const hasContentChanged = currentLastMessageContent !== lastMessageContentRef.current;
-
-        // Update refs for next comparison
-        prevMessagesLengthRef.current = messages.length;
-        lastMessageContentRef.current = currentLastMessageContent;
-
-        // Scroll only if necessary to reduce jitter
-        if (hasNewMessage) {
-            // For new messages, scroll immediately
-            requestAnimationFrame(scrollToBottom);
-        } else if (hasContentChanged && isGenerating) {
-            // For content updates during generation, use a more controlled approach
-            // Don't scroll immediately for every content change - use a timer
-            const timer = setTimeout(scrollToBottom, 150);
-            return () => clearTimeout(timer);
-        }
-    }, [messages, isGenerating]);
-
-    // Watch for generation stopping
-    useEffect(() => {
-        if (!isGenerating && messages.length > 0) {
-            // When generation stops, do a final scroll
-            const timer = setTimeout(scrollToBottom, 200);
-            return () => clearTimeout(timer);
-        }
-    }, [isGenerating, messages.length]);
-
-    // Resize handling
-    useEffect(() => {
-        const handleResize = () => {
-            if (messages.length > 0 && !isScrollLocked.current) {
-                scrollToBottom();
-            }
-        };
-
-        window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
-    }, [messages.length]);
-
-    // Adjust textarea height when input changes
-    useEffect(() => {
-        adjustTextareaHeight();
-    }, [inputValue]);
-
-    // Handle input changes
     const handleInputChange = (e) => {
         setInputValue(e.target.value);
     };
 
-    // Handle sending messages
+    useEffect(() => {
+        adjustTextareaHeight();
+    }, [inputValue]);
+
     const handleSendMessage = () => {
         if (inputValue.trim() && !isGenerating) {
             sendQuestion(inputValue);
             setInputValue('');
-            // Reset textarea height
             if (textareaRef.current) {
                 textareaRef.current.style.height = 'auto';
             }
-            // Scroll to bottom shortly after sending
-            setTimeout(scrollToBottom, 50);
         }
     };
 
-    // Handle key events (Enter to send, Shift+Enter for new line)
     const handleKeyDown = (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -126,7 +80,6 @@ const ChatInterface = () => {
         }
     };
 
-    // Empty state display
     if (!activeConversationId) {
         return (
             <div className="flex-1 flex flex-col items-center justify-center bg-claude-light">
@@ -146,10 +99,10 @@ const ChatInterface = () => {
 
     return (
         <div className="flex-1 flex flex-col h-full bg-claude-light">
-            {/* Message list */}
+            {/* 消息列表 */}
             <div
-                ref={messageContainerRef}
-                className="flex-1 overflow-y-auto"
+                ref={scrollContainerRef}
+                className="flex-1 overflow-y-auto flex flex-col px-4 py-2"
             >
                 {messages.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-center p-4">
@@ -169,8 +122,6 @@ const ChatInterface = () => {
                                     className="bg-white hover:bg-gray-50 border border-gray-200 rounded-md p-3 text-left text-sm transition-colors"
                                     onClick={() => {
                                         sendQuestion(question);
-                                        // Scroll to bottom after clicking suggestion button
-                                        setTimeout(scrollToBottom, 50);
                                     }}
                                 >
                                     {question}
@@ -183,12 +134,12 @@ const ChatInterface = () => {
                         {messages.map(message => (
                             <ChatMessage key={message.id} message={message} />
                         ))}
-                        <div ref={messagesEndRef} style={{ float: "left", clear: "both" }} />
+                        <div ref={messagesEndRef} /> {/* 滚动锚点 */}
                     </>
                 )}
             </div>
 
-            {/* Input area */}
+            {/* 输入区域 */}
             <div className="border-t border-claude-border bg-white px-4 py-3">
                 <div className="max-w-3xl mx-auto">
                     <div className="relative">

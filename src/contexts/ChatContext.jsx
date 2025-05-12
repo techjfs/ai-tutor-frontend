@@ -98,12 +98,10 @@ export const ChatProvider = ({ children }) => {
                 if (data.type === 'llm_response') {
                     handleLLMResponse(data);
                 } else if (data.type === 'task_started') {
-                    console.log('收到task_started消息:', data);
                     setCurrentTaskId(data.task_id);
 
                     // 检查是否为追问 - 来自后端的is_followup字段
                     const followupStatus = !!data.is_followup;
-                    console.log('设置追问状态:', followupStatus);
                     setIsFollowup(followupStatus);
                     isFollowupRef.current = followupStatus;
                 } else if (data.type === 'command_sent') {
@@ -153,8 +151,6 @@ export const ChatProvider = ({ children }) => {
 
             // 获取当前的追问状态
             const currentIsFollowup = isFollowupRef.current;
-            // 为调试打印当前追问状态
-            console.log('生成消息中，当前追问状态:', currentIsFollowup);
 
             // 检查是否已有AI回复消息，如果有则追加，否则创建新消息
             const lastMessage = newMessages.length > 0 ? newMessages[newMessages.length - 1] : null;
@@ -163,15 +159,16 @@ export const ChatProvider = ({ children }) => {
                 lastMessage.content += responseData;
             } else {
                 // 创建新消息时保存当前的追问状态
-                newMessages.push({
+                const newMessage = {
                     id: uuidv4(),
                     role: 'assistant',
                     content: responseData,
                     status: 'generating',
                     timestamp: new Date().toISOString(),
                     isFollowup: currentIsFollowup // 使用ref中的值确保状态准确
-                });
-                console.log('创建新消息，isFollowup:', currentIsFollowup);
+                };
+                // 将isFollowup属性固定下来，避免后续状态变化影响渲染
+                newMessages.push(newMessage);
             }
 
             // 更新React状态
@@ -187,8 +184,8 @@ export const ChatProvider = ({ children }) => {
                 const lastMessage = newMessages[newMessages.length - 1];
                 if (lastMessage && lastMessage.status === 'generating') {
                     lastMessage.status = 'complete';
-                    // 保留追问标记 - 不做任何修改
-                    console.log('消息完成，保留isFollowup:', lastMessage.isFollowup);
+                    // 确保isFollowup不会因后续状态变化而改变
+                    lastMessage.isFollowup = lastMessage.isFollowup || false;
                 }
 
                 // 更新conversations中的对应对话
@@ -202,7 +199,6 @@ export const ChatProvider = ({ children }) => {
             setCurrentTaskId(null);
 
             // 不要在这里重置isFollowup，等到新问题时自然重置
-            // 先记录一下当前的状态再清除
             console.log('生成结束，isFollowup将在下一次提问时重置，当前值:', isFollowupRef.current);
         }
     };
@@ -302,7 +298,6 @@ export const ChatProvider = ({ children }) => {
         // 我们重置前端状态以便于下一次响应更新正确的标志
         setIsFollowup(false);
         isFollowupRef.current = false;
-        console.log('发送新问题，重置追问状态为false');
 
         // 发送问题到WebSocket
         // 通过传递conversation_id，后端可以判断这是新对话还是追问
