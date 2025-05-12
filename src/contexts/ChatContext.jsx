@@ -145,37 +145,38 @@ export const ChatProvider = ({ children }) => {
             setIsGenerating(true);
         }
         else if (event === 'message') {
-            // 使用ref获取最新的消息状态
-            const currentMessages = currentMessagesRef.current;
-            const newMessages = [...currentMessages];
+            // 使用函数式更新确保获取最新状态
+            setMessages(prevMessages => {
+                const newMessages = [...prevMessages];
+                const currentIsFollowup = isFollowupRef.current;
 
-            // 获取当前的追问状态
-            const currentIsFollowup = isFollowupRef.current;
+                // 检查是否已有AI回复消息，如果有则追加，否则创建新消息
+                const lastMessage = newMessages.length > 0 ? newMessages[newMessages.length - 1] : null;
 
-            // 检查是否已有AI回复消息，如果有则追加，否则创建新消息
-            const lastMessage = newMessages.length > 0 ? newMessages[newMessages.length - 1] : null;
+                if (lastMessage && lastMessage.role === 'assistant' && lastMessage.status === 'generating') {
+                    // 创建新对象而不是直接修改
+                    newMessages[newMessages.length - 1] = {
+                        ...lastMessage,
+                        content: lastMessage.content + responseData
+                    };
+                } else {
+                    // 创建新消息
+                    const newMessage = {
+                        id: uuidv4(),
+                        role: 'assistant',
+                        content: responseData,
+                        status: 'generating',
+                        timestamp: new Date().toISOString(),
+                        isFollowup: currentIsFollowup
+                    };
+                    newMessages.push(newMessage);
+                }
 
-            if (lastMessage && lastMessage.role === 'assistant' && lastMessage.status === 'generating') {
-                lastMessage.content += responseData;
-            } else {
-                // 创建新消息时保存当前的追问状态
-                const newMessage = {
-                    id: uuidv4(),
-                    role: 'assistant',
-                    content: responseData,
-                    status: 'generating',
-                    timestamp: new Date().toISOString(),
-                    isFollowup: currentIsFollowup // 使用ref中的值确保状态准确
-                };
-                // 将isFollowup属性固定下来，避免后续状态变化影响渲染
-                newMessages.push(newMessage);
-            }
+                // 在函数内部更新对话
+                updateActiveConversation(newMessages);
 
-            // 更新React状态
-            setMessages(newMessages);
-
-            // 同时更新conversations中的对应对话
-            updateActiveConversation(newMessages);
+                return newMessages;
+            });
         }
         else if (event === 'end' || event === 'interrupted' || event === 'error') {
             // 完成生成，更新最后一条消息的状态
